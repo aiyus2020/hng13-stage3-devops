@@ -1,0 +1,42 @@
+# upstream placeholders replaced by start.sh/reload.sh
+log_format main '$remote_addr - $remote_user [$time_local] '
+                '"$request" $status $body_bytes_sent '
+                '"$http_referer" "$http_user_agent" '
+                'pool=$upstream_http_x_app_pool '
+                'release=$upstream_http_x_release_id '
+                'upstream_status=$upstream_status '
+                'upstream_addr=$upstream_addr '
+                'request_time=$request_time '
+                'upstream_response_time=$upstream_response_time';
+
+access_log /var/log/nginx/access.log main;
+
+upstream app_upstream {
+    server PRIMARY_HOST:PRIMARY_PORT max_fails=1 fail_timeout=3s;
+    server BACKUP_HOST:BACKUP_PORT backup;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+
+    proxy_connect_timeout 1s;
+    proxy_send_timeout 3s;
+    proxy_read_timeout 5s;
+
+    location / {
+        proxy_pass http://app_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-App-Proxy "nginx-blue-green";
+
+        proxy_pass_header X-App-Pool;
+        proxy_pass_header X-Release-Id;
+    }
+
+    location /healthz {
+        proxy_pass http://app_upstream/healthz;
+        proxy_set_header Host $host;
+    }
+}
