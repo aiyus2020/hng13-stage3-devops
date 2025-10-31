@@ -3,60 +3,70 @@ version: "3.8"
 services:
   app_blue:
     image: ${BLUE_IMAGE}
+    container_name: app_blue
     environment:
       - RELEASE_ID=${RELEASE_ID_BLUE}
       - APP_POOL=blue
-      - PORT=3000
+      - PORT=${PORT:-3000}
+    ports:
+      - "${PORT_BLUE:-8081}:${PORT:-3000}"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3000}/healthz"]
       interval: 5s
       timeout: 2s
       retries: 3
 
   app_green:
     image: ${GREEN_IMAGE}
+    container_name: app_green
     environment:
       - RELEASE_ID=${RELEASE_ID_GREEN}
       - APP_POOL=green
-      - PORT=3000
+      - PORT=${PORT:-3000}
+    ports:
+      - "${PORT_GREEN:-8082}:${PORT:-3000}"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3000}/healthz"]
       interval: 5s
       timeout: 2s
       retries: 3
 
   nginx:
     image: nginx:stable
+    container_name: bg_nginx
     depends_on:
       - app_blue
       - app_green
     ports:
-      - "${NGINX_PORT}:80"
+      - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./nginx/default.conf.tmpl:/etc/nginx/templates/default.conf.tmpl:ro
       - ./nginx/start.sh:/etc/nginx/start.sh:ro
       - ./nginx/reload.sh:/etc/nginx/reload.sh:ro
-      - nginx-logs:/var/log/nginx
+      - nginx_logs:/var/log/nginx
     environment:
       - ACTIVE_POOL=${ACTIVE_POOL}
-      - APP_PORT=3000
+      - APP_PORT=${APP_PORT:-3000}
     command: ["/bin/sh", "-c", "/etc/nginx/start.sh"]
 
   alert_watcher:
-    build:
-      context: ./watcher
-    image: watcher:latest
+    image: python:3.9-slim
     container_name: alert_watcher
     depends_on:
       - nginx
+    volumes:
+      - nginx_logs:/logs
+      - ./watcher.py:/app/watcher.py:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    working_dir: /app
+    command: ["sh", "-c", "pip install -r requirements.txt && python watcher.py"]
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - ERROR_RATE_THRESHOLD=${ERROR_RATE_THRESHOLD}
-      - WINDOW_SIZE=${WINDOW_SIZE}
-      - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC}
-      - MAINTENANCE_MODE=${MAINTENANCE_MODE}
-    volumes:
-      - nginx-logs:/var/log/nginx
+      - ERROR_RATE_THRESHOLD=${ERROR_RATE_THRESHOLD:-2}
+      - WINDOW_SIZE=${WINDOW_SIZE:-200}
+      - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC:-300}
+      - MAINTENANCE_MODE=${MAINTENANCE_MODE:-false}
+      - LOG_FILE=/logs/access.log
 
 volumes:
-  nginx-logs:
+  nginx_logs:

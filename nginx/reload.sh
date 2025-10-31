@@ -8,9 +8,12 @@ APP_PORT=${APP_PORT:-3000}
 if [ "$ACTIVE_POOL" = "blue" ]; then
   PRIMARY_HOST="app_blue"
   BACKUP_HOST="app_green"
-else
+elif [ "$ACTIVE_POOL" = "green" ]; then
   PRIMARY_HOST="app_green"
   BACKUP_HOST="app_blue"
+else
+  echo "Invalid ACTIVE_POOL: '$ACTIVE_POOL'"
+  exit 1
 fi
 
 sed -e "s/PRIMARY_HOST/${PRIMARY_HOST}/g" \
